@@ -1,6 +1,7 @@
 """Script to play RL agent with RSL-RL."""
 
 import os
+import subprocess
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -39,7 +40,53 @@ class PlayConfig:
   _demo_mode: tyro.conf.Suppress[bool] = False
 
 
+def run_macos_onnx_fallback(checkpoint_file: str) -> bool:
+  """Use the lightweight evaluator when a matching exported policy exists."""
+  if sys.platform != "darwin":
+    return False
+
+  checkpoint_path = Path(checkpoint_file).resolve()
+  onnx_path = checkpoint_path.with_suffix(".onnx")
+  if not onnx_path.exists():
+    return False
+
+  project_root = Path(__file__).resolve().parents[3]
+  sim_script = project_root / "test_scene" / "sim.py"
+  scene_xml = project_root / "test_scene" / "mjlab_scene.xml"
+  mjpython = Path(sys.executable).with_name("mjpython")
+  if not mjpython.exists():
+    raise FileNotFoundError(
+      f"MuJoCo's macOS launcher was not found in the environment: {mjpython}"
+    )
+  print(
+    "[INFO]: macOS does not support this checkpoint through the CUDA-oriented "
+    "MjLab/MuJoCo-Warp runtime."
+  )
+  print(f"[INFO]: Using matching lightweight ONNX policy: {onnx_path.name}")
+  subprocess.run(
+    [
+      str(mjpython),
+      str(sim_script),
+      "--xml",
+      str(scene_xml),
+      "--policy",
+      str(onnx_path),
+      "--device",
+      "auto",
+      "--policy_frequency",
+      "50",
+    ],
+    check=True,
+  )
+  return True
+
+
 def run_play(task_id: str, cfg: PlayConfig):
+  if cfg.checkpoint_file is not None and run_macos_onnx_fallback(
+    cfg.checkpoint_file
+  ):
+    return
+
   configure_torch_backends()
 
   device = cfg.device or ("cuda:0" if torch.cuda.is_available() else "cpu")

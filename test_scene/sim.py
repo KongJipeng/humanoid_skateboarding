@@ -35,6 +35,16 @@ class OnnxPolicyWrapper:
         return torch.from_numpy(result.astype(np.float32))
 
 
+def resolve_device(device: str) -> str:
+    """Resolve a portable inference device for the lightweight ONNX demo."""
+    if device == "auto":
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    if device.startswith("cuda") and not torch.cuda.is_available():
+        print("[yellow]CUDA is unavailable; falling back to CPU.[/yellow]")
+        return "cpu"
+    return device
+
+
 def load_onnx_policy(policy_path: str, device: str) -> OnnxPolicyWrapper:
     if ort is None:
         raise ImportError("onnxruntime is required for ONNX policy inference but is not installed.")
@@ -101,10 +111,6 @@ def start_listener():
     with keyboard.Listener(on_press=on_press) as listener:
         listener.join()
 
-listener_thread = threading.Thread(target=start_listener)
-listener_thread.daemon = True
-listener_thread.start()
-
 def get_gravity_orientation(quaternion):
     qw = quaternion[0]
     qx = quaternion[1]
@@ -141,12 +147,12 @@ class RealTimePolicyController:
     def __init__(self, 
                  xml_file, 
                  policy_path, 
-                 device='cuda', 
+                 device='auto',
                  policy_frequency=50,
                  ):
 
-        self.device = device
-        self.policy = load_onnx_policy(policy_path, device)
+        self.device = resolve_device(device)
+        self.policy = load_onnx_policy(policy_path, self.device)
 
         # Create MuJoCo sim
         self.model = mujoco.MjModel.from_xml_path(xml_file)
@@ -343,8 +349,8 @@ def main():
     parser.add_argument('--policy', type=str, required=True,
                         help='Path to skater ONNX policy file')
     parser.add_argument('--device', type=str, 
-                        default='cuda',
-                        help='Device to run policy on (cuda/cpu)')
+                        default='auto',
+                        help='Device to run policy on (auto/cuda/cpu)')
     parser.add_argument("--policy_frequency", help="Policy frequency", default=50, type=int)
     args = parser.parse_args()
     
@@ -360,6 +366,9 @@ def main():
     print(f"  XML file: {args.xml}")
     print(f"  Policy file: {args.policy}")
     print(f"  Device: {args.device}")
+
+    listener_thread = threading.Thread(target=start_listener, daemon=True)
+    listener_thread.start()
 
     controller = RealTimePolicyController(
         xml_file=args.xml,

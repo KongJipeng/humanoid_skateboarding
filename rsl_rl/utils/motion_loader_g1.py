@@ -6,11 +6,30 @@ import logging
 
 import torch
 import numpy as np
-from pybullet_utils import transformations
 
 from rsl_rl.utils import motion_util
 
 _EPS = np.finfo(float).eps * 4.0
+
+
+def quaternion_slerp_np(q0, q1, fraction, shortestpath=True):
+    """Interpolate two quaternions without requiring PyBullet."""
+    q0 = np.asarray(q0, dtype=np.float64)
+    q1 = np.asarray(q1, dtype=np.float64)
+    dot = float(np.dot(q0, q1))
+    if shortestpath and dot < 0.0:
+        q1 = -q1
+        dot = -dot
+    dot = np.clip(dot, -1.0, 1.0)
+    if dot > 1.0 - _EPS:
+        result = q0 + fraction * (q1 - q0)
+        return result / np.linalg.norm(result)
+    angle = np.arccos(dot)
+    scale0 = np.sin((1.0 - fraction) * angle) / np.sin(angle)
+    scale1 = np.sin(fraction * angle) / np.sin(angle)
+    return scale0 * q0 + scale1 * q1
+
+
 def quaternion_slerp(q0, q1, fraction, spin=0, shortestpath=True):
     """Batch quaternion spherical linear interpolation."""
 
@@ -281,7 +300,9 @@ class G1_AMPLoader:
         joint_vel_0, joint_vel_1 = G1_AMPLoader.get_joint_vel(frame0), G1_AMPLoader.get_joint_vel(frame1)
 
         blend_root_pos = self.slerp(root_pos0, root_pos1, blend)
-        blend_root_rot = transformations.quaternion_slerp(root_rot0.cpu().numpy(), root_rot1.cpu().numpy(), blend)
+        blend_root_rot = quaternion_slerp_np(
+            root_rot0.cpu().numpy(), root_rot1.cpu().numpy(), blend
+        )
         blend_root_rot = torch.tensor(motion_util.standardize_quaternion(blend_root_rot),dtype=torch.float32, device=self.device)
         blend_joints = self.slerp(joints0, joints1, blend)
         # blend_tar_toe_pos = self.slerp(tar_toe_pos_0, tar_toe_pos_1, blend)

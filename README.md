@@ -63,19 +63,33 @@ To install this repository, please follow these steps:
 
    ```bash
    uv sync
-   uv pip install -e .
    ```
+
+   `uv sync` creates an editable `.venv` automatically. Point your editor's Python
+   interpreter to `.venv/bin/python`.
+
+### macOS (Apple Silicon)
+
+The lightweight MuJoCo/ONNX evaluation works on Apple Silicon using CPU inference:
+
+```bash
+uv sync --python 3.12
+bash test_scene/sim.sh ckpts/test.onnx
+```
+
+The full `mjlab` training stack targets NVIDIA CUDA on Linux. On macOS, use the
+lightweight ONNX demo above to inspect and play the provided policy.
 
 ## Training Example
 
 ```bash
-uv run train Mjlab-Skater-Flat-Unitree-G1 --env.scene.num-envs 4096
+uv run husky-train Mjlab-Skater-Flat-Unitree-G1 --env.scene.num-envs 4096
 ```
 
 ## Play Examples
 
 ```bash
-uv run play Mjlab-Skater-Flat-Unitree-G1 --checkpoint_file your-ckpt-path
+uv run husky-play Mjlab-Skater-Flat-Unitree-G1 --checkpoint_file your-ckpt-path
 ```
 
 We also provide a lite MuJoCo simulation script for evaluation:
