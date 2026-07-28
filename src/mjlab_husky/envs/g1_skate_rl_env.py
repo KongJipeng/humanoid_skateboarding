@@ -34,6 +34,8 @@ class G1SkaterManagerBasedRlEnvCfg(ManagerBasedRlEnvCfg):
   beizer_names: list[str] = field(default_factory=list)
   slerp_names: list[str] = field(default_factory=list)
   steer_init_pos: list[float] = field(default_factory=list)
+  push2steer_body_offset: float = 0.20
+  push2steer_left_foot_offset: float = 0.35
   rake_angle: float = 60.0
   eval_mode: bool = False
   """Whether in evaluation mode. If True, will save metrics to JSON and exit after all episodes complete."""
@@ -315,9 +317,7 @@ class G1SkaterManagerBasedRlEnv(ManagerBasedRlEnv):
         self.body_bezier_buffers["steer2push_start_quat_b"][self.just_entered_steer2push] = body_quat_b[self.just_entered_steer2push]
     
   def _get_phase(self):
-    self.phase_length_buf[self.still] = torch.where((self.phase_length_buf[self.still]-1) % int(self.cycle_time/ 2 / self.step_dt) == 0, 
-                                                            0, 
-                                                            self.phase_length_buf[self.still])
+    self.phase_length_buf[self.still] = 0
     phase = ((self.phase_length_buf * self.step_dt / self.cycle_time)) % 1.0
     phase = torch.clip(phase, 0.0, 1.0)
 
@@ -389,7 +389,19 @@ class G1SkaterManagerBasedRlEnv(ManagerBasedRlEnv):
             end_pos_b = self.steer_init_body_pos_b[push2steer]
             end_quat_b = self.steer_init_body_quat_b[push2steer]
 
-            target_pos_b[push2steer] = bezier_curve(start_pos_b, end_pos_b, t[push2steer], offset=0.2)
+            target_pos_b[push2steer] = bezier_curve(
+                start_pos_b,
+                end_pos_b,
+                t[push2steer],
+                offset=self.cfg.push2steer_body_offset,
+            )
+            left_foot_id = self.feet_body_ids[0]
+            target_pos_b[push2steer, left_foot_id] = cubic_bezier_lift_transfer(
+                start_pos_b[:, left_foot_id],
+                end_pos_b[:, left_foot_id],
+                t[push2steer],
+                offset=self.cfg.push2steer_left_foot_offset,
+            )
             target_quat_b[push2steer] = quaternion_slerp(start_quat_b, end_quat_b, t[push2steer])
 
         if steer2push.any():
@@ -485,6 +497,23 @@ def bezier_curve(start_p, end_p, t, offset=0.15):
       result_pos = result_pos.squeeze(0)
   
   return result_pos
+
+def cubic_bezier_lift_transfer(start_p, end_p, t, offset=0.35):
+  """Generate a lift-transfer-land trajectory with vertical endpoint tangents."""
+  control_start = start_p.clone()
+  control_end = end_p.clone()
+  control_start[..., 2] += offset
+  control_end[..., 2] += offset
+
+  view_shape = (t.shape[0],) + (1,) * (start_p.ndim - 1)
+  t = torch.clamp(t, 0.0, 1.0).view(view_shape)
+
+  return (
+    (1 - t) ** 3 * start_p
+    + 3 * (1 - t) ** 2 * t * control_start
+    + 3 * (1 - t) * t**2 * control_end
+    + t**3 * end_p
+  )
 
 def quaternion_slerp(q0, q1, t, shortestpath=True):
     if t.dim() == 0:

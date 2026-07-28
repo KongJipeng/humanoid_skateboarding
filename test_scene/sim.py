@@ -259,7 +259,15 @@ class RealTimePolicyController:
                     continue
                 t_start = time.time()
 
-                phase_counter += 1
+                standing = v < 0.1
+                if standing:
+                    phase_counter = 0
+                    policy_v = 0.0
+                    policy_h = 0.0
+                else:
+                    phase_counter += 1
+                    policy_v = v
+                    policy_h = h
 
                 phase = ((phase_counter * self.step_dt / self.cycle_time)) % 1.0
                 phase = torch.tensor(phase)
@@ -278,7 +286,7 @@ class RealTimePolicyController:
                 heading = np.array([np.arctan2(forward_w[1], forward_w[0])])
 
                 obs_proprio = np.concatenate([
-                    np.array([v, h], dtype=np.float32) * [2.0, 1.0],
+                    np.array([policy_v, policy_h], dtype=np.float32) * [2.0, 1.0],
                     heading * 1.0 / math.pi,
                     sensor_ang_vel * 0.25,
                     gravity_orientation,

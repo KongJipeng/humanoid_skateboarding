@@ -16,3 +16,6 @@ video
 wandb
 logs
 agents
+
+.DS_Store
+SOLUTION.md

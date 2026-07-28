@@ -154,6 +154,25 @@ def transition_body_pos_tracking(env: G1SkaterManagerBasedRlEnv, std: float) -> 
   reward = torch.where(in_transition, reward, torch.zeros_like(reward))
   return reward
 
+def transition_left_foot_pos_tracking(env: G1SkaterManagerBasedRlEnv, std: float) -> torch.Tensor:
+  target_pos_b, _, in_transition = env._get_transition_target_b()
+
+  body_pos_w = env.robot.data.body_link_pos_w[:, :, :3]
+  root_pos_w = env.skateboard.data.root_link_pos_w[:, :3][:, None, :].repeat(
+    1, env.robot.num_bodies, 1
+  )
+  root_quat_w = env.skateboard.data.root_link_quat_w[:, None, :].repeat(
+    1, env.robot.num_bodies, 1
+  )
+
+  rel_pos_w = body_pos_w - root_pos_w
+  current_body_pos_b = quat_apply_inverse(root_quat_w, rel_pos_w)
+  left_foot_id = env.feet_body_ids[0]
+  pos_error = current_body_pos_b[:, left_foot_id] - target_pos_b[:, left_foot_id]
+  pos_error_norm = torch.sum(torch.square(pos_error), dim=-1)
+  reward = torch.exp(-pos_error_norm / std**2)
+  return torch.where(in_transition, reward, torch.zeros_like(reward))
+
 def transition_body_rot_tracking(env: G1SkaterManagerBasedRlEnv, std: float) -> torch.Tensor:
   _, target_quat_b, in_transition = env._get_transition_target_b()
   
@@ -189,6 +208,25 @@ def stand_still(env: G1SkaterManagerBasedRlEnv, std: float) -> torch.Tensor:
   reward = torch.exp(-dof_error / std**2)
   return reward * still_envs.float()
 
+def still_board_lin_vel_l2(env: G1SkaterManagerBasedRlEnv) -> torch.Tensor:
+  velocity = env.skateboard.data.root_link_lin_vel_w.reshape(env.num_envs, -1)
+  return torch.sum(torch.square(velocity), dim=1) * env.still.float()
+
+def still_board_ang_vel_l2(env: G1SkaterManagerBasedRlEnv) -> torch.Tensor:
+  velocity = env.skateboard.data.root_link_ang_vel_w.reshape(env.num_envs, -1)
+  return torch.sum(torch.square(velocity), dim=1) * env.still.float()
+
+def still_base_lin_vel_l2(env: G1SkaterManagerBasedRlEnv) -> torch.Tensor:
+  velocity = env.robot.data.root_link_lin_vel_w.reshape(env.num_envs, -1)
+  return torch.sum(torch.square(velocity), dim=1) * env.still.float()
+
+def still_base_ang_vel_l2(env: G1SkaterManagerBasedRlEnv) -> torch.Tensor:
+  velocity = env.robot.data.root_link_ang_vel_w.reshape(env.num_envs, -1)
+  return torch.sum(torch.square(velocity), dim=1) * env.still.float()
+
+def still_joint_vel_l2(env: G1SkaterManagerBasedRlEnv) -> torch.Tensor:
+  return torch.sum(torch.square(env.robot.data.joint_vel), dim=1) * env.still.float()
+
 def board_flat(env: G1SkaterManagerBasedRlEnv, std: float) -> torch.Tensor:
   gamma = env.skateboard.data.joint_pos[:, 0]
   non_steer = env.contact_phase[:, 1] != 1.0
@@ -196,4 +234,3 @@ def board_flat(env: G1SkaterManagerBasedRlEnv, std: float) -> torch.Tensor:
   reward = torch.exp(-diff_gamma / std**2)
   reward = torch.where(non_steer, reward, torch.zeros_like(reward))
   return reward
-  
