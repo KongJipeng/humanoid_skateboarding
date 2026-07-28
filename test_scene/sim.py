@@ -265,7 +265,11 @@ class RealTimePolicyController:
                     continue
                 t_start = time.time()
 
-                phase_counter += 1
+                # Match training: a standing command keeps the gait phase at zero.
+                if v < 0.1:
+                    phase_counter = 0
+                else:
+                    phase_counter += 1
 
                 phase = ((phase_counter * self.step_dt / self.cycle_time)) % 1.0
                 phase = torch.tensor(phase)
