@@ -1,6 +1,8 @@
 import argparse
 import math
+import re
 import time
+from pathlib import Path
 import numpy as np
 import mujoco
 import torch
@@ -35,6 +37,135 @@ class OnnxPolicyWrapper:
         return torch.from_numpy(result.astype(np.float32))
 
 
+def _activation_module(name: str) -> torch.nn.Module:
+    activations = {
+        "elu": torch.nn.ELU,
+        "selu": torch.nn.SELU,
+        "relu": torch.nn.ReLU,
+        "crelu": torch.nn.CELU,
+        "lrelu": torch.nn.LeakyReLU,
+        "tanh": torch.nn.Tanh,
+        "sigmoid": torch.nn.Sigmoid,
+        "softplus": torch.nn.Softplus,
+        "gelu": torch.nn.GELU,
+        "swish": torch.nn.SiLU,
+        "mish": torch.nn.Mish,
+        "identity": torch.nn.Identity,
+    }
+    key = name.lower()
+    if key not in activations:
+        valid = ", ".join(sorted(activations))
+        raise ValueError(f"Unsupported activation '{name}'. Expected one of: {valid}")
+    return activations[key]()
+
+
+def _resolve_checkpoint_activation(checkpoint_path: Path, requested: str) -> str:
+    if requested != "auto":
+        return requested
+
+    agent_cfg_path = checkpoint_path.parent / "params" / "agent.yaml"
+    if agent_cfg_path.exists():
+        text = agent_cfg_path.read_text(encoding="utf-8")
+        match = re.search(r"(?m)^\s+activation:\s*([A-Za-z0-9_]+)\s*$", text)
+        if match:
+            return match.group(1)
+
+    print(
+        "[yellow]Could not determine the checkpoint activation from "
+        f"{agent_cfg_path}; falling back to ELU.[/yellow]"
+    )
+    return "elu"
+
+
+class TorchCheckpointPolicy(torch.nn.Module):
+    """Rebuild a feed-forward RSL-RL actor from a training checkpoint."""
+
+    NORMALIZATION_EPS = 1e-2
+
+    def __init__(self, checkpoint_path: str, device: str, activation: str = "auto"):
+        super().__init__()
+        path = Path(checkpoint_path)
+        try:
+            checkpoint = torch.load(path, map_location="cpu", weights_only=False)
+        except TypeError:
+            checkpoint = torch.load(path, map_location="cpu")
+
+        if not isinstance(checkpoint, dict) or "model_state_dict" not in checkpoint:
+            raise ValueError(
+                f"{path} is not an RSL-RL checkpoint containing model_state_dict."
+            )
+        state = checkpoint["model_state_dict"]
+        layer_indices = sorted(
+            {
+                int(match.group(1))
+                for key in state
+                if (match := re.fullmatch(r"actor\.(\d+)\.weight", key))
+            }
+        )
+        if not layer_indices:
+            raise ValueError(f"No feed-forward actor layers were found in {path}.")
+
+        activation_name = _resolve_checkpoint_activation(path, activation)
+        layers = []
+        for position, layer_index in enumerate(layer_indices):
+            weight = state[f"actor.{layer_index}.weight"]
+            bias = state[f"actor.{layer_index}.bias"]
+            layer = torch.nn.Linear(weight.shape[1], weight.shape[0])
+            layer.weight.data.copy_(weight)
+            layer.bias.data.copy_(bias)
+            layers.append(layer)
+            if position < len(layer_indices) - 1:
+                layers.append(_activation_module(activation_name))
+
+        self.actor = torch.nn.Sequential(*layers)
+        self.input_dim = int(state[f"actor.{layer_indices[0]}.weight"].shape[1])
+        self.output_dim = int(state[f"actor.{layer_indices[-1]}.weight"].shape[0])
+
+        mean = state.get("actor_obs_normalizer._mean")
+        std = state.get("actor_obs_normalizer._std")
+        if mean is None or std is None:
+            mean = torch.zeros(1, self.input_dim)
+            std = torch.ones(1, self.input_dim)
+            print(
+                "[yellow]Checkpoint has no actor observation normalizer; "
+                "using identity normalization.[/yellow]"
+            )
+        self.register_buffer("obs_mean", mean.detach().clone())
+        self.register_buffer("obs_std", std.detach().clone())
+        self.to(device)
+        self.eval()
+
+        iteration = checkpoint.get("iter", "unknown")
+        print(
+            f"PyTorch policy loaded from {path} "
+            f"(iteration={iteration}, activation={activation_name}, "
+            f"input={self.input_dim}, actions={self.output_dim}, device={device})"
+        )
+
+    def forward(self, obs_tensor: torch.Tensor) -> torch.Tensor:
+        normalized = (obs_tensor - self.obs_mean) / (
+            self.obs_std + self.NORMALIZATION_EPS
+        )
+        return self.actor(normalized)
+
+    def export_onnx(self, output_path: Path) -> None:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        dummy = torch.zeros(
+            1, self.input_dim, device=self.obs_mean.device, dtype=self.obs_mean.dtype
+        )
+        torch.onnx.export(
+            self,
+            dummy,
+            str(output_path),
+            input_names=["obs"],
+            output_names=["actions"],
+            dynamic_axes={"obs": {0: "batch"}, "actions": {0: "batch"}},
+            opset_version=17,
+            dynamo=False,
+        )
+        print(f"ONNX policy exported to {output_path}")
+
+
 def resolve_device(device: str) -> str:
     """Resolve a portable inference device for the lightweight ONNX demo."""
     if device == "auto":
@@ -61,6 +192,28 @@ def load_onnx_policy(policy_path: str, device: str) -> OnnxPolicyWrapper:
     print(f"ONNX policy loaded from {policy_path} using providers: {session.get_providers()}")
     return OnnxPolicyWrapper(session, input_name)
 
+
+def load_policy(
+    policy_path: str,
+    device: str,
+    activation: str = "auto",
+    export_onnx: bool = False,
+):
+    suffix = Path(policy_path).suffix.lower()
+    if suffix == ".onnx":
+        if export_onnx:
+            raise ValueError("--export-onnx is only valid for a .pt checkpoint.")
+        return load_onnx_policy(policy_path, device)
+    if suffix in {".pt", ".pth"}:
+        policy = TorchCheckpointPolicy(policy_path, device, activation)
+        if export_onnx:
+            policy.export_onnx(Path(policy_path).with_suffix(".onnx"))
+        return policy
+    raise ValueError(
+        f"Unsupported policy format '{suffix}'. Expected .onnx, .pt, or .pth."
+    )
+
+
 from pynput import keyboard
 import threading
 
@@ -68,7 +221,7 @@ reset_flag = False
 pause_flag = False
 V_MIN, V_MAX = 0.0, 1.5
 H_MIN, H_MAX = -math.pi / 4, math.pi / 4
-v = 1.0
+v = 0.0
 h = 0.0
 
 
@@ -149,10 +302,17 @@ class RealTimePolicyController:
                  policy_path, 
                  device='auto',
                  policy_frequency=50,
+                 activation='auto',
+                 export_onnx=False,
                  ):
 
         self.device = resolve_device(device)
-        self.policy = load_onnx_policy(policy_path, self.device)
+        self.policy = load_policy(
+            policy_path,
+            self.device,
+            activation=activation,
+            export_onnx=export_onnx,
+        )
 
         # Create MuJoCo sim
         self.model = mujoco.MjModel.from_xml_path(xml_file)
@@ -206,6 +366,12 @@ class RealTimePolicyController:
         self.n_obs_single = 3 + 3 + 3 + 3*23 + 1
         self.history_len = 5
         self.total_obs_size = self.n_obs_single * (self.history_len) 
+        policy_input_dim = getattr(self.policy, "input_dim", self.total_obs_size)
+        if policy_input_dim != self.total_obs_size:
+            raise ValueError(
+                f"Policy expects {policy_input_dim} observations, but sim.py "
+                f"constructs {self.total_obs_size}."
+            )
 
         self.obs_block_dims = [2, 1, 3, 3, 23, 23, 23, 1]
         self.obs_block_starts = np.cumsum([0] + self.obs_block_dims[:-1])
@@ -351,10 +517,20 @@ def main():
     parser.add_argument('--xml', type=str, default='mjlab_scene.xml',
                         help='Path to MuJoCo XML file')
     parser.add_argument('--policy', type=str, required=True,
-                        help='Path to skater ONNX policy file')
+                        help='Path to a skater ONNX policy or RSL-RL .pt checkpoint')
     parser.add_argument('--device', type=str, 
                         default='auto',
                         help='Device to run policy on (auto/cuda/cpu)')
+    parser.add_argument(
+        "--activation",
+        default="auto",
+        help="Actor activation for .pt checkpoints (auto reads params/agent.yaml)",
+    )
+    parser.add_argument(
+        "--export-onnx",
+        action="store_true",
+        help="Export a loaded .pt checkpoint beside it as ONNX",
+    )
     parser.add_argument("--policy_frequency", help="Policy frequency", default=50, type=int)
     args = parser.parse_args()
     
@@ -379,6 +555,8 @@ def main():
         policy_path=args.policy,
         device=args.device,
         policy_frequency=args.policy_frequency,
+        activation=args.activation,
+        export_onnx=args.export_onnx,
     )
     controller.run()
 

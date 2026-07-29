@@ -35,20 +35,24 @@ class PlayConfig:
   video_width: int = 1920
   camera: int | str | None = None
   viewer: Literal["auto", "native", "viser"] = "auto"
+  export_onnx: bool = False
 
   # Internal flag used by demo script.
   _demo_mode: tyro.conf.Suppress[bool] = False
 
 
-def run_macos_onnx_fallback(checkpoint_file: str) -> bool:
-  """Use the lightweight evaluator when a matching exported policy exists."""
+def run_macos_lightweight_fallback(
+  checkpoint_file: str, export_onnx: bool = False
+) -> bool:
+  """Use lightweight MuJoCo for ONNX policies and RSL-RL checkpoints."""
   if sys.platform != "darwin":
     return False
 
   checkpoint_path = Path(checkpoint_file).resolve()
-  onnx_path = checkpoint_path.with_suffix(".onnx")
-  if not onnx_path.exists():
+  if checkpoint_path.suffix.lower() not in {".onnx", ".pt", ".pth"}:
     return False
+  if not checkpoint_path.exists():
+    raise FileNotFoundError(f"Policy file not found: {checkpoint_path}")
 
   project_root = Path(__file__).resolve().parents[3]
   sim_script = project_root / "test_scene" / "sim.py"
@@ -59,31 +63,31 @@ def run_macos_onnx_fallback(checkpoint_file: str) -> bool:
       f"MuJoCo's macOS launcher was not found in the environment: {mjpython}"
     )
   print(
-    "[INFO]: macOS does not support this checkpoint through the CUDA-oriented "
+    "[INFO]: macOS is using the lightweight MuJoCo evaluator instead of the "
     "MjLab/MuJoCo-Warp runtime."
   )
-  print(f"[INFO]: Using matching lightweight ONNX policy: {onnx_path.name}")
-  subprocess.run(
-    [
-      str(mjpython),
-      str(sim_script),
-      "--xml",
-      str(scene_xml),
-      "--policy",
-      str(onnx_path),
-      "--device",
-      "auto",
-      "--policy_frequency",
-      "50",
-    ],
-    check=True,
-  )
+  print(f"[INFO]: Using lightweight policy: {checkpoint_path.name}")
+  command = [
+    str(mjpython),
+    str(sim_script),
+    "--xml",
+    str(scene_xml),
+    "--policy",
+    str(checkpoint_path),
+    "--device",
+    "auto",
+    "--policy_frequency",
+    "50",
+  ]
+  if export_onnx and checkpoint_path.suffix.lower() in {".pt", ".pth"}:
+    command.append("--export-onnx")
+  subprocess.run(command, check=True)
   return True
 
 
 def run_play(task_id: str, cfg: PlayConfig):
-  if cfg.checkpoint_file is not None and run_macos_onnx_fallback(
-    cfg.checkpoint_file
+  if cfg.checkpoint_file is not None and run_macos_lightweight_fallback(
+    cfg.checkpoint_file, export_onnx=cfg.export_onnx
   ):
     return
 
