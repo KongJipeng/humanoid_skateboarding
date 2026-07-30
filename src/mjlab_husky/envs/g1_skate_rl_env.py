@@ -36,6 +36,13 @@ class G1SkaterManagerBasedRlEnvCfg(ManagerBasedRlEnvCfg):
   steer_init_pos: list[float] = field(default_factory=list)
   push2steer_body_offset: float = 0.15
   push2steer_left_foot_offset: float = 0.28
+  # Move the rear (left) foot 5 cm toward the deck's left side.
+  rear_foot_lateral_offset: float = 0.05
+  # Physical height of the deck collision surface, not the freejoint origin.
+  skateboard_deck_height_range: tuple[float, float] = (0.09, 0.10)
+  # Multipliers for the nominal board/truck Kp and Kd values.
+  skateboard_roll_stiffness_scale_range: tuple[float, float] = (0.5, 1.5)
+  skateboard_roll_damping_scale_range: tuple[float, float] = (0.5, 2.0)
   rake_angle: float = 60.0
   eval_mode: bool = False
   """Whether in evaluation mode. If True, will save metrics to JSON and exit after all episodes complete."""
@@ -139,6 +146,9 @@ class G1SkaterManagerBasedRlEnv(ManagerBasedRlEnv):
     steer_init_body_pose = torch.from_numpy(np.load("dataset/ref_pose/steer_start_pose_b.npy")).to(self.device).repeat(self.num_envs, 1 , 1)
     self.push_init_body_pos_b = push_init_body_pose[..., :3]
     self.steer_init_body_pos_b = steer_init_body_pose[..., :3]
+    self.steer_init_body_pos_b[
+      :, self.feet_body_ids[0], 1
+    ] += self.cfg.rear_foot_lateral_offset
     self.push_init_body_quat_b = push_init_body_pose[..., 3:]
     self.steer_init_body_quat_b = steer_init_body_pose[..., 3:]
     self.body_bezier_buffers = {

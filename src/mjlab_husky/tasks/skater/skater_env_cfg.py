@@ -163,6 +163,34 @@ def make_g1_skater_env_cfg() -> G1SkaterManagerBasedRlEnvCfg:
         "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
       },
     ),
+    "randomize_skateboard_deck_height": EventTermCfg(
+      func=mdp.randomize_skateboard_deck_height,
+      mode="reset",
+      params={
+        "asset_cfg": SceneEntityCfg(
+          "skateboard",
+          body_names=("front_truck", "rear_truck"),
+          preserve_order=True,
+        ),
+        "reference_deck_height": 0.095,
+        "deck_half_thickness": 0.01,
+      },
+    ),
+    "randomize_skateboard_roll_pd": EventTermCfg(
+      func=mdp.randomize_skateboard_roll_pd,
+      mode="reset",
+      params={
+        "asset_cfg": SceneEntityCfg(
+          "skateboard",
+          actuator_names=[
+            "board_tilt_joint",
+            "front_truck_roll_joint",
+            "rear_truck_roll_joint",
+          ],
+          preserve_order=True,
+        ),
+      },
+    ),
     "base_com": EventTermCfg(
       mode="startup",
       func=mdp.randomize_field,
