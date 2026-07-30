@@ -34,8 +34,8 @@ class G1SkaterManagerBasedRlEnvCfg(ManagerBasedRlEnvCfg):
   beizer_names: list[str] = field(default_factory=list)
   slerp_names: list[str] = field(default_factory=list)
   steer_init_pos: list[float] = field(default_factory=list)
-  push2steer_body_offset: float = 0.20
-  push2steer_left_foot_offset: float = 0.35
+  push2steer_body_offset: float = 0.15
+  push2steer_left_foot_offset: float = 0.28
   rake_angle: float = 60.0
   eval_mode: bool = False
   """Whether in evaluation mode. If True, will save metrics to JSON and exit after all episodes complete."""

@@ -126,8 +126,8 @@ def make_g1_skater_env_cfg() -> G1SkaterManagerBasedRlEnvCfg:
 
   commands: dict[str, CommandTermCfg] = {
     "skate": SkateUniformVelocityCommandCfg(
-      resampling_time_range=(20.0, 20.0),
-      rel_standing_envs=0.15,
+      resampling_time_range=(3.0, 6.0),
+      rel_standing_envs=0.30,
       rel_heading_envs=1.0,
       heading_command=True,
       debug_vis=True,
@@ -329,12 +329,12 @@ def make_g1_skater_env_cfg() -> G1SkaterManagerBasedRlEnvCfg:
     "joint_torques_l2": RewardTermCfg(func=mdp.joint_torques_l2, weight=-1e-6),
     "self_collisions": RewardTermCfg(func=mdp.self_collision_cost, weight=-10.0, params={"sensor_name": "robot_collision"}),
     "board_flat": RewardTermCfg(func=mdp.board_flat, weight=3.0, params={"std": math.sqrt(0.05)}),
-    "stand_still": RewardTermCfg(func=mdp.stand_still, weight=5.0, params={"std": math.sqrt(0.04)}),
+    "stand_still": RewardTermCfg(func=mdp.stand_still, weight=10.0, params={"std": math.sqrt(0.02)}),
     "still_board_lin_vel_l2": RewardTermCfg(func=mdp.still_board_lin_vel_l2, weight=-4.0),
     "still_board_ang_vel_l2": RewardTermCfg(func=mdp.still_board_ang_vel_l2, weight=-0.5),
-    "still_base_lin_vel_l2": RewardTermCfg(func=mdp.still_base_lin_vel_l2, weight=-1.5),
-    "still_base_ang_vel_l2": RewardTermCfg(func=mdp.still_base_ang_vel_l2, weight=-0.3),
-    "still_joint_vel_l2": RewardTermCfg(func=mdp.still_joint_vel_l2, weight=-0.02),
+    "still_base_lin_vel_l2": RewardTermCfg(func=mdp.still_base_lin_vel_l2, weight=-0.5),
+    "still_base_ang_vel_l2": RewardTermCfg(func=mdp.still_base_ang_vel_l2, weight=-0.1),
+    "still_joint_vel_l2": RewardTermCfg(func=mdp.still_joint_vel_l2, weight=-0.005),
   }
   ##
   # Terminations
