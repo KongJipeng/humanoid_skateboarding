@@ -11,6 +11,7 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "mjlab",
+    "matplotlib",
     "onnxruntime",
     "rsl-rl-lib",
     "pynput",
@@ -23,6 +24,7 @@ mjlab_husky = "mjlab_husky.tasks"
 [project.scripts]
 train = "mjlab_husky.scripts.train:main"
 play = "mjlab_husky.scripts.play:main"
+play-graph = "mjlab_husky.scripts.play_graph:main"
 husky-train = "mjlab_husky.scripts.train:main"
 husky-play = "mjlab_husky.scripts.play:main"
 
