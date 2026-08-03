@@ -34,12 +34,16 @@ class G1SkaterManagerBasedRlEnvCfg(ManagerBasedRlEnvCfg):
   beizer_names: list[str] = field(default_factory=list)
   slerp_names: list[str] = field(default_factory=list)
   steer_init_pos: list[float] = field(default_factory=list)
-  push2steer_body_offset: float = 0.15
-  push2steer_left_foot_offset: float = 0.28
+  push2steer_body_offset: float = 0.08
+  push2steer_left_foot_offset: float = 0.15
   # Move the rear (left) foot 5 cm toward the deck's left side.
   rear_foot_lateral_offset: float = 0.05
   # Physical height of the deck collision surface, not the freejoint origin.
   skateboard_deck_height_range: tuple[float, float] = (0.09, 0.10)
+  # At reset, allow the support foot time to find a height-randomized deck.
+  contact_acquisition_time_s: float = 0.5
+  # Require persistent contact before enabling the normal feet-off-board check.
+  contact_acquisition_required_contact_steps: int = 3
   # Multipliers for the nominal board/truck Kp and Kd values.
   skateboard_roll_stiffness_scale_range: tuple[float, float] = (0.5, 1.5)
   skateboard_roll_damping_scale_range: tuple[float, float] = (0.5, 2.0)
@@ -141,6 +145,16 @@ class G1SkaterManagerBasedRlEnv(ManagerBasedRlEnv):
 
     self.phase_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long, requires_grad=False)
     self.still = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
+
+    self.contact_acquisition_active = torch.ones(
+      self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False
+    )
+    self.right_board_contact_streak = torch.zeros(
+      self.num_envs, dtype=torch.long, device=self.device, requires_grad=False
+    )
+    self.contact_acquisition_elapsed_steps = torch.zeros(
+      self.num_envs, dtype=torch.long, device=self.device, requires_grad=False
+    )
     
     push_init_body_pose = torch.from_numpy(np.load("dataset/ref_pose/push_start_pose_b.npy")).to(self.device).repeat(self.num_envs, 1 , 1)
     steer_init_body_pose = torch.from_numpy(np.load("dataset/ref_pose/steer_start_pose_b.npy")).to(self.device).repeat(self.num_envs, 1 , 1)
@@ -213,6 +227,7 @@ class G1SkaterManagerBasedRlEnv(ManagerBasedRlEnv):
     self.phase_length_buf += 1
     self.common_step_counter += 1
     self._compute_contact()
+    self._update_contact_acquisition()
 
     # Check terminations.
     self.reset_buf = self.termination_manager.compute()
@@ -275,6 +290,9 @@ class G1SkaterManagerBasedRlEnv(ManagerBasedRlEnv):
     self.extras["log"].update(info)
     
     self.phase_length_buf[env_ids] = 0
+    self.contact_acquisition_active[env_ids] = True
+    self.right_board_contact_streak[env_ids] = 0
+    self.contact_acquisition_elapsed_steps[env_ids] = 0
     for buf in self.body_bezier_buffers.values():
         buf[env_ids] = 0
   
@@ -293,6 +311,27 @@ class G1SkaterManagerBasedRlEnv(ManagerBasedRlEnv):
     self.last_contacts = contact
     self.last_wheel_contacts = wheel_contact
     self._resample_contact_phases()
+
+  def _update_contact_acquisition(self) -> None:
+    """Track persistent right-foot contact during the post-reset settle window."""
+    right_contact_sensor = self.scene.sensors["right_feet_board_contact"]
+    right_contact = torch.norm(right_contact_sensor.data.force, dim=-1) > 5.0
+    right_contact = right_contact.reshape(self.num_envs, -1).any(dim=-1)
+
+    active = self.contact_acquisition_active
+    self.contact_acquisition_elapsed_steps[active] += 1
+    next_streak = torch.where(
+      right_contact,
+      self.right_board_contact_streak + 1,
+      torch.zeros_like(self.right_board_contact_streak),
+    )
+    self.right_board_contact_streak[active] = next_streak[active]
+
+    acquired = active & (
+      self.right_board_contact_streak
+      >= self.cfg.contact_acquisition_required_contact_steps
+    )
+    self.contact_acquisition_active[acquired] = False
 
   def _resample_contact_phases(self):
     self.last_contact_phase = self.contact_phase.clone()

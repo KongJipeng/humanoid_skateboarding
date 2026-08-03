@@ -16,7 +16,14 @@ def illegal_contact(env: G1SkaterManagerBasedRlEnv, sensor_name: str) -> torch.T
   return torch.any(sensor.data.found, dim=-1)
 
 
+def contact_acquisition_timeout(env: G1SkaterManagerBasedRlEnv) -> torch.Tensor:
+  elapsed_s = env.contact_acquisition_elapsed_steps * env.step_dt
+  return env.contact_acquisition_active & (
+    elapsed_s >= env.cfg.contact_acquisition_time_s
+  )
+
+
 def bad_feet_off_board(env: G1SkaterManagerBasedRlEnv) -> torch.Tensor:
-    feet_contact_b = env._get_feet_contact_b()
-    bad_contact = torch.sum(feet_contact_b, dim=-1) == 0
-    return bad_contact
+  feet_contact_b = env._get_feet_contact_b()
+  bad_contact = torch.sum(feet_contact_b, dim=-1) == 0
+  return bad_contact & ~env.contact_acquisition_active

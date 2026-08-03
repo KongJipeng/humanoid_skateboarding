@@ -8,21 +8,40 @@ version = "0.1.0"
 license = "Apache-2.0"
 description = "Humanoid Skateboarding System via Physics-Aware Whole-Body Control"
 readme = "README.md"
-requires-python = ">=3.12,<3.14"
+requires-python = ">=3.13,<3.14"
 dependencies = [
     "mjlab",
     "onnxruntime",
     "pybullet",
     "rsl-rl-lib",
-    "pynput"
+    "pynput",
+    "mujoco ; python_full_version == '3.13.*' and platform_machine == 'x86_64' and sys_platform == 'linux'",
+    "mujoco-warp==3.7.0.1 ; python_full_version == '3.13.*' and platform_machine == 'x86_64' and sys_platform == 'linux'",
+    "warp-lang==1.13.0.dev20260227 ; python_full_version == '3.13.*' and platform_machine == 'x86_64' and sys_platform == 'linux'",
 ]
 
 [project.entry-points."mjlab.tasks"]
 mjlab_husky = "mjlab_husky.tasks"
 
+[tool.uv]
+environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
+override-dependencies = [
+    "mujoco==3.7.0.dev892927987",
+    "mujoco-warp==3.7.0.1",
+    "warp-lang==1.13.0.dev20260227",
+]
+
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple"
+
 [project.scripts]
 train = "mjlab_husky.scripts.train:main"
 play = "mjlab_husky.scripts.play:main"
+
+[[tool.uv.index]]
+name = "nvidia"
+url = "https://pypi.nvidia.com/"
 
 [tool.ruff]
 src = ["src"]  # Helpful for recognizing first-party imports.
@@ -31,3 +50,6 @@ indent-width = 4
 [tool.uv.sources]
 mjlab = { git = "https://github.com/mujocolab/mjlab.git", rev = "13212ad" }
 rsl-rl-lib = { path = "rsl_rl" }
+mujoco = { path = "wheels/mujoco-3.7.0.dev892927987-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl" }
+warp-lang = { index = "nvidia" }
+mujoco-warp = { index = "pypi" }

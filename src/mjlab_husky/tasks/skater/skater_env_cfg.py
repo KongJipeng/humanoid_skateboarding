@@ -143,6 +143,10 @@ def make_g1_skater_env_cfg() -> G1SkaterManagerBasedRlEnvCfg:
   ##
 
   events = {
+    "reset_scene_to_default": EventTermCfg(
+      func=mdp.reset_scene_to_default,
+      mode="reset",
+    ),
     "push_robot": EventTermCfg(
       func=mdp.push_by_setting_velocity,
       mode="interval",
@@ -371,6 +375,9 @@ def make_g1_skater_env_cfg() -> G1SkaterManagerBasedRlEnvCfg:
   terminations = {
     "time_out": TerminationTermCfg(func=mdp.time_out, time_out=True),
     "fell_over": TerminationTermCfg(func=mdp.bad_orientation, params={"limit_angle": math.radians(70.0)}),
+    "contact_acquisition_timeout": TerminationTermCfg(
+      func=mdp.contact_acquisition_timeout,
+    ),
     "feet_off_board": TerminationTermCfg(func=mdp.bad_feet_off_board),
     "illegal_contact": TerminationTermCfg(func=mdp.illegal_contact, params={"sensor_name": "illegal_contact"}),
   }
