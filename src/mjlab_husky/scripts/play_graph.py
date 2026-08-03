@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -21,7 +22,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SIM_PATH = PROJECT_ROOT / "test_scene" / "sim.py"
 DEFAULT_SCENE = PROJECT_ROOT / "test_scene" / "mjlab_scene.xml"
 DEFAULT_POLICY = PROJECT_ROOT / "ckpts" / "test.onnx"
-DEFAULT_PLOT = PROJECT_ROOT / "height_plot.png"
 
 
 class HeightRecorder:
@@ -98,6 +98,8 @@ def run_simulation(
     policy_frequency=50,
     activation="auto",
     export_onnx=cfg.export_onnx,
+    randomize_skateboard_height=cfg.randomize_skateboard_height,
+    skateboard_height_range=cfg.skateboard_height_range,
   )
   recorder = HeightRecorder(controller.model)
 
@@ -165,6 +167,16 @@ def save_height_plot(recorder: HeightRecorder, output_path: Path) -> Path:
   return output_path
 
 
+def get_plot_output_path(checkpoint_path: Path) -> Path:
+  """Build '<checkpoint directory>_<weight number>.png' in project root."""
+  weight_match = re.search(r"(\d+)$", checkpoint_path.stem)
+  weight_label = (
+    weight_match.group(1) if weight_match is not None else checkpoint_path.stem
+  )
+  filename = f"{checkpoint_path.parent.name}_{weight_label}.png"
+  return PROJECT_ROOT / filename
+
+
 def open_plot(output_path: Path) -> None:
   if sys.platform == "darwin":
     command = ["open", str(output_path)]
@@ -206,7 +218,10 @@ def run_play_graph(task_id: str, cfg: PlayConfig) -> None:
   ensure_mjpython_on_macos()
   sim = load_lightweight_sim()
   recorder = run_simulation(sim, checkpoint_path, cfg)
-  output_path = save_height_plot(recorder, DEFAULT_PLOT)
+  output_path = save_height_plot(
+    recorder,
+    get_plot_output_path(checkpoint_path),
+  )
   print(f"[INFO]: Height graph saved to: {output_path}")
   open_plot(output_path)
 

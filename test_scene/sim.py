@@ -304,6 +304,8 @@ class RealTimePolicyController:
                  policy_frequency=50,
                  activation='auto',
                  export_onnx=False,
+                 randomize_skateboard_height=True,
+                 skateboard_height_range=(0.09, 0.10),
                  ):
 
         self.device = resolve_device(device)
@@ -322,6 +324,35 @@ class RealTimePolicyController:
         self.model.opt.ccd_iterations = 50
         
         self.data = mujoco.MjData(self.model)
+
+        min_height, max_height = skateboard_height_range
+        if min_height <= 0.0 or min_height > max_height:
+            raise ValueError(
+                "skateboard_height_range must satisfy 0 < min <= max, "
+                f"got {skateboard_height_range}."
+            )
+        self.randomize_skateboard_height = randomize_skateboard_height
+        self.skateboard_height_range = skateboard_height_range
+        skateboard_joint_id = self.model.joint(
+            "skateboard/floating_base_joint_skateboard"
+        ).id
+        self.skateboard_qpos_adr = self.model.jnt_qposadr[skateboard_joint_id]
+        self.skateboard_deck_half_thickness = self.model.geom_size[
+            self.model.geom("skateboard/skateboard_deck_collision").id, 2
+        ]
+        self.skateboard_reference_deck_height = (
+            self.model.qpos0[self.skateboard_qpos_adr + 2]
+            + self.skateboard_deck_half_thickness
+        )
+        self.skateboard_truck_body_ids = np.array(
+            [
+                self.model.body("skateboard/front_truck").id,
+                self.model.body("skateboard/rear_truck").id,
+            ]
+        )
+        self.skateboard_default_truck_z = self.model.body_pos[
+            self.skateboard_truck_body_ids, 2
+        ].copy()
         
         self.viewer = mjv.launch_passive(self.model, self.data, show_left_ui=False, show_right_ui=False)
         self.viewer.cam.distance = 4.0
@@ -387,6 +418,17 @@ class RealTimePolicyController:
 
     def reset(self, init_pos):
         """Reset robot to initial position"""
+        init_pos = init_pos.copy()
+        if self.randomize_skateboard_height:
+            deck_height = np.random.uniform(*self.skateboard_height_range)
+            truck_z_offset = self.skateboard_reference_deck_height - deck_height
+            self.model.body_pos[self.skateboard_truck_body_ids, 2] = (
+                self.skateboard_default_truck_z + truck_z_offset
+            )
+            init_pos[self.skateboard_qpos_adr + 2] = (
+                deck_height - self.skateboard_deck_half_thickness
+            )
+            print(f"Skateboard deck height: {deck_height:.4f} m")
         self.data.qpos[:] = init_pos
         self.data.qvel[:] = 0
         self.data.ctrl[:-7] = self.robot_default_dof_pos[reindex_list]
@@ -532,6 +574,19 @@ def main():
         help="Export a loaded .pt checkpoint beside it as ONNX",
     )
     parser.add_argument("--policy_frequency", help="Policy frequency", default=50, type=int)
+    parser.add_argument(
+        "--randomize_skateboard_height",
+        action="store_true",
+        help="Randomize the settled skateboard deck-surface height on every reset",
+    )
+    parser.add_argument(
+        "--skateboard_height_range",
+        nargs=2,
+        type=float,
+        default=(0.09, 0.10),
+        metavar=("MIN", "MAX"),
+        help="Skateboard deck-surface height range in meters",
+    )
     args = parser.parse_args()
     
     if not os.path.exists(args.policy):
@@ -557,6 +612,8 @@ def main():
         policy_frequency=args.policy_frequency,
         activation=args.activation,
         export_onnx=args.export_onnx,
+        randomize_skateboard_height=args.randomize_skateboard_height,
+        skateboard_height_range=tuple(args.skateboard_height_range),
     )
     controller.run()
 

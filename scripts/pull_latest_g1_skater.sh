@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 REMOTE_HOST="${REMOTE_HOST:-root@116.238.240.2}"
+# REMOTE_HOST="${REMOTE_HOST:-root@10.127.48.252}"
 REMOTE_PORT="${REMOTE_PORT:-30961}"
 REMOTE_ROOT="${REMOTE_ROOT:-/data_sjy/kjp/Humanoid/humanoid_skateboarding/logs/rsl_rl/g1_skater}"
 LOCAL_ROOT="${LOCAL_ROOT:-${PROJECT_ROOT}/logs/rsl_rs/g1_skater}"
@@ -64,27 +65,6 @@ while IFS= read -r -d '' remote_experiment; do
   echo "[${experiment_count}] Syncing experiment: ${experiment_name}"
   mkdir -p "${local_experiment}"
 
-  # Recreate the complete directory tree, including empty directories.
-  while IFS= read -r -d '' remote_dir; do
-    relative_dir="${remote_dir#"${remote_experiment}"}"
-    mkdir -p "${local_experiment}${relative_dir}"
-  done < <(
-    ssh "${ssh_opts[@]}" "${REMOTE_HOST}" \
-      "find ${remote_experiment_q} -type d -print0"
-  )
-
-  # Copy experiment metadata, TensorBoard logs, configs, and videos, while
-  # deliberately excluding every checkpoint.
-  while IFS= read -r -d '' remote_file; do
-    relative_file="${remote_file#"${remote_experiment}/"}"
-    copy_remote_file \
-      "${remote_file}" \
-      "${local_experiment}/${relative_file}"
-  done < <(
-    ssh "${ssh_opts[@]}" "${REMOTE_HOST}" \
-      "find ${remote_experiment_q} -type f ! -name '${WEIGHT_GLOB}' -print0"
-  )
-
   # RSL-RL checkpoints use model_<iteration>.pt. Natural version sorting makes
   # model_10000.pt newer than model_900.pt without relying on modification time.
   latest_weight="$(
@@ -95,7 +75,7 @@ while IFS= read -r -d '' remote_experiment; do
   )"
 
   if [[ -z "${latest_weight}" ]]; then
-    echo "  No ${WEIGHT_GLOB} checkpoint found; metadata only."
+    echo "  No ${WEIGHT_GLOB} checkpoint found; skipping."
     continue
   fi
 

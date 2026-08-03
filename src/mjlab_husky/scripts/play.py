@@ -36,13 +36,18 @@ class PlayConfig:
   camera: int | str | None = None
   viewer: Literal["auto", "native", "viser"] = "auto"
   export_onnx: bool = False
+  randomize_skateboard_height: bool = True
+  skateboard_height_range: tuple[float, float] = (0.09, 0.10)
 
   # Internal flag used by demo script.
   _demo_mode: tyro.conf.Suppress[bool] = False
 
 
 def run_macos_lightweight_fallback(
-  checkpoint_file: str, export_onnx: bool = False
+  checkpoint_file: str,
+  export_onnx: bool = False,
+  randomize_skateboard_height: bool = True,
+  skateboard_height_range: tuple[float, float] = (0.09, 0.10),
 ) -> bool:
   """Use lightweight MuJoCo for ONNX policies and RSL-RL checkpoints."""
   if sys.platform != "darwin":
@@ -81,13 +86,32 @@ def run_macos_lightweight_fallback(
   ]
   if export_onnx and checkpoint_path.suffix.lower() in {".pt", ".pth"}:
     command.append("--export-onnx")
+  if randomize_skateboard_height:
+    command.extend(
+      [
+        "--randomize_skateboard_height",
+        "--skateboard_height_range",
+        str(skateboard_height_range[0]),
+        str(skateboard_height_range[1]),
+      ]
+    )
   subprocess.run(command, check=True)
   return True
 
 
 def run_play(task_id: str, cfg: PlayConfig):
+  min_height, max_height = cfg.skateboard_height_range
+  if min_height <= 0.0 or min_height > max_height:
+    raise ValueError(
+      "`skateboard_height_range` must satisfy 0 < min <= max, "
+      f"got {cfg.skateboard_height_range}."
+    )
+
   if cfg.checkpoint_file is not None and run_macos_lightweight_fallback(
-    cfg.checkpoint_file, export_onnx=cfg.export_onnx
+    cfg.checkpoint_file,
+    export_onnx=cfg.export_onnx,
+    randomize_skateboard_height=cfg.randomize_skateboard_height,
+    skateboard_height_range=cfg.skateboard_height_range,
   ):
     return
 
