@@ -234,7 +234,7 @@ PUSH_INIT_KEYFRAME = EntityCfg.InitialStateCfg(
 )
 
 SKATEBOARD_INIT_KEYFRAME = EntityCfg.InitialStateCfg(
-  pos=(0, 0, 0.085),
+  pos=(0, 0, 0.09),
   joint_pos={".*": 0.0},
   joint_vel={".*": 0.0},
 )

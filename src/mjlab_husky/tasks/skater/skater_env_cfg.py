@@ -176,7 +176,6 @@ def make_g1_skater_env_cfg() -> G1SkaterManagerBasedRlEnvCfg:
           body_names=("front_truck", "rear_truck"),
           preserve_order=True,
         ),
-        "reference_deck_height": 0.095,
         "deck_half_thickness": 0.01,
       },
     ),

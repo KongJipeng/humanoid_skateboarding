@@ -282,7 +282,7 @@
         </body>
       </body>
     </body>
-    <body name="skateboard/skateboard_deck" pos="0 0 0.085">
+    <body name="skateboard/skateboard_deck" pos="0 0 0.09">
       <inertial pos="0 0 0" mass="1.5" diaginertia="0.005 0.08 0.085"/>
       <joint name="skateboard/floating_base_joint_skateboard" type="free"/>
       <body name="skateboard/board_tilt_body">
@@ -292,7 +292,7 @@
         <site name="skateboard/rear_marker" pos="-0.2 0.02 0" size="0.025"/>
         <site name="skateboard/front_marker" pos="0.2 -0.03 0" size="0.025"/>
       </body>
-      <body name="skateboard/front_truck" pos="0.2 0 0.035">
+      <body name="skateboard/front_truck" pos="0.2 0 0.03">
         <inertial pos="0 0 -0.09" quat="0.707388 0 0 0.706825" mass="0.5" diaginertia="0.00043 3.3e-05 0.00043"/>
         <joint name="skateboard/front_truck_roll_joint" pos="0 0 0" axis="0 0 -1" range="-0.1 0.1" actuatorfrcrange="-20 20"/>
         <geom name="skateboard/front_truck_collision" size="0.05 0.01 0.01" pos="0 0 -0.09" quat="0.707388 0 0 0.706825" type="box" priority="1"/>
@@ -307,7 +307,7 @@
           <geom name="skateboard/front_right_wheel_collision" class="skateboard/wheel_geom" pos="0 -0.07 0" quat="0.707388 0.706825 0 0" condim="6" priority="1" friction="1 0.01 0.001"/>
         </body>
       </body>
-      <body name="skateboard/rear_truck" pos="-0.2 0 0.035">
+      <body name="skateboard/rear_truck" pos="-0.2 0 0.03">
         <inertial pos="0 0 -0.09" quat="0.707388 0 0 0.706825" mass="0.5" diaginertia="0.00043 3.3e-05 0.00043"/>
         <joint name="skateboard/rear_truck_roll_joint" pos="0 0 0" axis="0 0 1" range="-0.1 0.1" actuatorfrcrange="-20 20"/>
         <geom name="skateboard/rear_truck_collision" size="0.05 0.01 0.01" pos="0 0 -0.09" quat="0.707388 0 0 0.706825" type="box" priority="1"/>
@@ -378,6 +378,6 @@
   </sensor>
 
   <keyframe>
-    <key name="init_state" qpos="-0.03 0.1 0.78 1 0 0 0 0 0 0 0.23 -0.2 0 -0.7 0 0 1.17 -0.45 0 0 0 0 -0.03 0.45 -0.21 1.32 -0.7 -0.845 0.83 1.19 0 0 0.085 1 0 0 0 0 0 0 0 0 0 0" ctrl="-0.03 0.45 -0.21 1.32 -0.7 -0.845 0.83 1.19 0 0 -0.7 0 0 0 0.23 0 1.17 0 0 -0.2 0 -0.45 0 0 0 0 0 0 0 0"/>
+    <key name="init_state" qpos="-0.03 0.1 0.78 1 0 0 0 0 0 0 0.23 -0.2 0 -0.7 0 0 1.17 -0.45 0 0 0 0 -0.03 0.45 -0.21 1.32 -0.7 -0.845 0.83 1.19 0 0 0.09 1 0 0 0 0 0 0 0 0 0 0" ctrl="-0.03 0.45 -0.21 1.32 -0.7 -0.845 0.83 1.19 0 0 -0.7 0 0 0 0.23 0 1.17 0 0 -0.2 0 -0.45 0 0 0 0 0 0 0 0"/>
   </keyframe>
 </mujoco>

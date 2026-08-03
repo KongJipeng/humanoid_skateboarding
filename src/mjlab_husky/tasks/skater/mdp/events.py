@@ -39,7 +39,6 @@ def randomize_skateboard_deck_height(
   env: ManagerBasedRlEnv,
   env_ids: torch.Tensor | slice | None,
   asset_cfg: SceneEntityCfg,
-  reference_deck_height: float,
   deck_half_thickness: float,
 ) -> None:
   """Randomize the physical deck-surface height and reset the board on the ground.
@@ -65,7 +64,12 @@ def randomize_skateboard_deck_height(
 
   default_body_pos = env.sim.get_default_field("body_pos")
   default_truck_z = default_body_pos[body_ids, 2]
-  truck_z_offset = reference_deck_height - deck_height
+  # Infer the nominal deck-surface height from the asset instead of coupling it
+  # to the randomization range through a manually maintained reference value.
+  nominal_deck_height = (
+    skateboard.data.default_root_state[env_ids, 2] + deck_half_thickness
+  )
+  truck_z_offset = nominal_deck_height - deck_height
   env.sim.model.body_pos[env_grid, body_grid, 2] = (
     default_truck_z.unsqueeze(0) + truck_z_offset.unsqueeze(1)
   )
@@ -79,8 +83,8 @@ def randomize_skateboard_deck_height(
   skateboard.write_root_state_to_sim(root_state, env_ids=env_ids)
 
   if not hasattr(env, "skateboard_deck_height"):
-    env.skateboard_deck_height = torch.full(
-      (env.num_envs,), reference_deck_height, device=env.device
+    env.skateboard_deck_height = (
+      skateboard.data.default_root_state[:, 2] + deck_half_thickness
     )
   env.skateboard_deck_height[env_ids] = deck_height
 
